@@ -54,43 +54,43 @@ type Proxy struct {
 	Index     map[string]*Target // an index into Targets using domain as the key
 }
 
-func (dc *Proxy) refresh(ctx context.Context, r io.Reader) error {
-	dc.mu.Lock()
-	defer dc.mu.Unlock()
+func (p *Proxy) refresh(ctx context.Context, r io.Reader) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	var targets Targets
 	if err := json.NewDecoder(r).Decode(&targets); err != nil {
 		return err
 	}
 	// rewrite targets member and re-index
-	dc.Targets = targets
-	dc.Index = dc.Targets.Index()
+	p.Targets = targets
+	p.Index = p.Targets.Index()
 
 	return nil
 }
 
-func (dc *Proxy) Refresh(ctx context.Context) error {
+func (p *Proxy) Refresh(ctx context.Context) error {
 	// TODO: respect passed in context value
-	inf, err := os.Open(dc.Config)
+	inf, err := os.Open(p.Config)
 	if err != nil {
 		return err
 	}
 	defer inf.Close()
-	return dc.refresh(ctx, inf)
+	return p.refresh(ctx, inf)
 }
 
-func (dc *Proxy) lookupTarget(_ context.Context, name string) (*Target, bool) {
-	dc.mu.RLock()
-	defer dc.mu.RUnlock()
-	target, found := dc.Index[name]
+func (p *Proxy) lookupTarget(_ context.Context, name string) (*Target, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	target, found := p.Index[name]
 	return target, found
 }
 
-func (dc *Proxy) LookupTarget(ctx context.Context, name string) (*Target, error) {
-	target, exists := dc.lookupTarget(ctx, name)
+func (p *Proxy) LookupTarget(ctx context.Context, name string) (*Target, error) {
+	target, exists := p.lookupTarget(ctx, name)
 	if !exists {
 		// if not found, check if the configuration file has been updated.
-		dc.Refresh(ctx)
-		target, exists = dc.lookupTarget(ctx, name)
+		p.Refresh(ctx)
+		target, exists = p.lookupTarget(ctx, name)
 	}
 	if !exists {
 		return nil, fmt.Errorf("proxy path for target %q not found", name)
@@ -98,18 +98,18 @@ func (dc *Proxy) LookupTarget(ctx context.Context, name string) (*Target, error)
 	return target, nil
 }
 
-func (dc *Proxy) HostPolicy(ctx context.Context, host string) error {
-	if _, err := dc.LookupTarget(ctx, host); err != nil {
+func (p *Proxy) HostPolicy(ctx context.Context, host string) error {
+	if _, err := p.LookupTarget(ctx, host); err != nil {
 		return fmt.Errorf("HostPolicy() failed for host %q: %w", host, err)
 	}
 	return nil
 }
 
-func (dc *Proxy) DialContext(ctx context.Context, _ string, addr string) (net.Conn, error) {
+func (p *Proxy) DialContext(ctx context.Context, _ string, addr string) (net.Conn, error) {
 	addr = strings.TrimSuffix(addr, ":80")
 
 	// attempt to find target in cache
-	target, err := dc.LookupTarget(ctx, addr)
+	target, err := p.LookupTarget(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (p Proxy) Run(ctx context.Context) error {
 	m := autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: p.HostPolicy,
-		Cache:      autocert.DirCache("."),
+		Cache:      autocert.DirCache("/tmp/dircache"),
 	}
 
 	config := tls.Config{
@@ -131,10 +131,10 @@ func (p Proxy) Run(ctx context.Context) error {
 			if _, err := p.LookupTarget(ctx, hello.ServerName); err != nil {
 				return nil, fmt.Errorf("could not find proxy target for %q: %w", hello.ServerName, err)
 			}
-			log.Printf("Getting certificate for for %q", hello.ServerName)
+
 			cert, err := m.GetCertificate(hello)
 			if err != nil {
-				log.Printf("GetCertificate() returned %v", err)
+				log.Printf("GetCertificate() failed %v", err)
 			}
 			return cert, err
 		},
@@ -149,16 +149,12 @@ func (p Proxy) Run(ctx context.Context) error {
 				Director: func(r *http.Request) {
 					r.URL.Scheme = "http"
 					r.URL.Host = r.Host
-					// log.Printf("mutating request for %q (%q) - %q", r.URL.Path, r.URL, r.URL.Scheme)
-					// log.Printf("request: %#v", r)
 				},
 				Transport: &http.Transport{
 					DialContext: func(ctx context.Context, _ string, addr string) (net.Conn, error) {
 						addr = strings.TrimSuffix(addr, ":80")
 						nodes := strings.Split(addr, ".")
-						log.Printf("%v", nodes)
 						addr = strings.Join(nodes[len(nodes)-2:], ".")
-						log.Printf("dialing %q:%q", "unix", addr)
 
 						target, err := p.LookupTarget(context.TODO(), addr)
 						if err != nil {

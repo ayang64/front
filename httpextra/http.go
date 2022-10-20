@@ -42,6 +42,7 @@ func (cl CommonLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(cl.W,
 		strings.Join(
 			[]string{
+				r.Host,
 				func() string { addr, _, _ := strings.Cut(r.RemoteAddr, ":"); return addr }(),
 				"-",
 				user,

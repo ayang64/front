@@ -46,10 +46,11 @@ func (t Targets) Index() map[string]*Target {
 }
 
 type Proxy struct {
-	mu        *sync.RWMutex      // mutex to protect members of Proxy
-	HTTPPort  int                // Port to listen for certbot requests
-	HTTPSPort int                // port to listen for secure traffic
-	Config    string             // Path to configuration file
+	mu        *sync.RWMutex // mutex to protect members of Proxy
+	HTTPPort  int           // Port to listen for certbot requests
+	HTTPSPort int           // port to listen for secure traffic
+	Config    string        // Path to configuration file
+	Dircache  string
 	Targets   Targets            // Unmarshaled configuration file
 	Index     map[string]*Target // an index into Targets using domain as the key
 }
@@ -209,6 +210,7 @@ func main() {
 	httpport := flag.Int("httpport", 80, "http port")
 	httpsport := flag.Int("httpsport", 443, "https port")
 	config := flag.String("config", "./proxy.json", "configuration file")
+	dircache := flag.String("dircache", "./dircache", "location of certificate cache")
 	flag.Parse()
 
 	proxy := Proxy{
@@ -216,6 +218,7 @@ func main() {
 		HTTPSPort: *httpsport,
 		mu:        &sync.RWMutex{},
 		Config:    *config,
+		Dircache:  *dircache,
 		Index:     map[string]*Target{},
 	}
 

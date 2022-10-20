@@ -1,4 +1,4 @@
-module front
+module github.com/ayang64/front
 
 go 1.18
 

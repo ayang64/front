@@ -17,11 +17,13 @@ func main() {
 	dircache := flag.String("dircache", "./dircache", "location of certificate cache")
 	flag.Parse()
 
-	server := proxy.Server{
-		HTTPPort:  *httpport,
-		HTTPSPort: *httpsport,
-		Config:    *config,
-		Dircache:  *dircache,
+	server, err := proxy.New(
+		proxy.WithHTTPPort(*httpport),
+		proxy.WithHTTPSPort(*httpsport),
+		proxy.WithConfigPath(*config),
+		proxy.WithDircachePath(*dircache))
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT)

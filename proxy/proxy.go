@@ -35,13 +35,13 @@ func (t Targets) index() map[string]*Target {
 }
 
 type Server struct {
-	mu        *sync.RWMutex      // Mutex to protect members of Proxy
-	index     map[string]*Target // Index into Targets using domain as the key
-	HTTPPort  int                // Port to listen for certbot requests
-	HTTPSPort int                // Port to listen for secure traffic
-	Config    string             // Path to configuration file
-	Dircache  string             // Location of autocert dir cache
-	Targets   Targets            // Unmarshaled configuration file
+	mu           *sync.RWMutex      // Mutex to protect members of Proxy
+	index        map[string]*Target // Index into Targets using domain as the key
+	httpPort     int                // Port to listen for certbot requests
+	httpsPort    int                // Port to listen for secure traffic
+	configPath   string             // Path to configuration file
+	dircachePath string             // Location of autocert dir cache
+	targets      Targets            // Unmarshaled configuration file
 }
 
 // refresh attempts to re-read the JSON proxy configuraton provided
@@ -77,12 +77,12 @@ func (s *Server) refreshFromFile(ctx context.Context, p string) (Targets, error)
 // If succesful, the new configuration is stored and indexed for
 // fast retrieval.
 func (s *Server) Refresh(ctx context.Context) error {
-	targets, err := s.refreshFromFile(ctx, s.Config)
+	targets, err := s.refreshFromFile(ctx, s.configPath)
 	if err != nil {
 		return err
 	}
-	s.Targets = targets
-	s.index = s.Targets.index()
+	s.targets = targets
+	s.index = s.targets.index()
 	return nil
 }
 
@@ -126,40 +126,40 @@ func (s *Server) DialContext(ctx context.Context, _ string, addr string) (net.Co
 
 func WithDircachePath(p string) func(*Server) error {
 	return func(s *Server) error {
-		s.Dircache = p
+		s.dircachePath = p
 		return nil
 	}
 }
 
 func WithConfigPath(p string) func(*Server) error {
 	return func(s *Server) error {
-		s.Config = p
+		s.configPath = p
 		return nil
 	}
 }
 
 func WithHTTPSPort(port int) func(*Server) error {
 	return func(s *Server) error {
-		s.HTTPSPort = port
+		s.httpsPort = port
 		return nil
 	}
 }
 
 func WithHTTPPort(port int) func(*Server) error {
 	return func(s *Server) error {
-		s.HTTPPort = port
+		s.httpPort = port
 		return nil
 	}
 }
 
 func New(opts ...func(*Server) error) (*Server, error) {
 	s := Server{
-		mu:        &sync.RWMutex{},
-		index:     map[string]*Target{},
-		HTTPPort:  80,
-		HTTPSPort: 443,
-		Config:    "./proxy.json",
-		Dircache:  "./dircache",
+		mu:           &sync.RWMutex{},
+		index:        map[string]*Target{},
+		httpPort:     80,
+		httpsPort:    443,
+		configPath:   "./proxy.json",
+		dircachePath: "./dircache",
 	}
 	for _, opt := range opts {
 		if err := opt(&s); err != nil {
@@ -173,7 +173,7 @@ func (s Server) Serve(ctx context.Context) error {
 	m := autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: s.HostPolicy,
-		Cache:      autocert.DirCache(s.Dircache),
+		Cache:      autocert.DirCache(s.dircachePath),
 	}
 
 	config := tls.Config{
@@ -220,14 +220,14 @@ func (s Server) Serve(ctx context.Context) error {
 		},
 	}
 
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", s.HTTPSPort))
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", s.httpsPort))
 	if err != nil {
 		return err
 	}
 
 	cr := http.Server{
 		Handler: &commonlog.Handler{W: os.Stderr, H: m.HTTPHandler(nil)},
-		Addr:    fmt.Sprintf(":%d", s.HTTPPort),
+		Addr:    fmt.Sprintf(":%d", s.httpPort),
 	}
 
 	errCh := make(chan error, 2)

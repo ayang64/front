@@ -124,15 +124,52 @@ func (s *Server) DialContext(ctx context.Context, _ string, addr string) (net.Co
 	return net.Dial("unix", target.Path)
 }
 
-func (s Server) Serve(ctx context.Context) error {
-	// FIXME: i don't like doing this here.  i think we need a factory function
-	// for a proxy.Server instead.
-	//
-	// These two assignments aren't thread safe.
-	//
-	s.mu = &sync.RWMutex{}
-	s.index = map[string]*Target{}
+func WithDircachePath(p string) func(*Server) error {
+	return func(s *Server) error {
+		s.Dircache = p
+		return nil
+	}
+}
 
+func WithConfigPath(p string) func(*Server) error {
+	return func(s *Server) error {
+		s.Config = p
+		return nil
+	}
+}
+
+func WithHTTPSPort(port int) func(*Server) error {
+	return func(s *Server) error {
+		s.HTTPSPort = port
+		return nil
+	}
+}
+
+func WithHTTPPort(port int) func(*Server) error {
+	return func(s *Server) error {
+		s.HTTPPort = port
+		return nil
+	}
+}
+
+func New(opts ...func(*Server) error) (*Server, error) {
+	s := Server{
+		mu:        &sync.RWMutex{},
+		index:     map[string]*Target{},
+		HTTPPort:  80,
+		HTTPSPort: 443,
+		Config:    "./proxy.json",
+		Dircache:  "./dircache",
+	}
+	for _, opt := range opts {
+		if err := opt(&s); err != nil {
+			return nil, err
+		}
+	}
+	return &s, nil
+}
+
+func (s Server) Serve(ctx context.Context) error {
 	m := autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: s.HostPolicy,
@@ -183,14 +220,14 @@ func (s Server) Serve(ctx context.Context) error {
 		},
 	}
 
-	l, err := net.Listen("tcp", ":443")
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", s.HTTPSPort))
 	if err != nil {
 		return err
 	}
 
 	cr := http.Server{
 		Handler: &commonlog.Handler{W: os.Stderr, H: m.HTTPHandler(nil)},
-		Addr:    ":80",
+		Addr:    fmt.Sprintf(":%d", s.HTTPPort),
 	}
 
 	errCh := make(chan error, 2)
@@ -198,22 +235,33 @@ func (s Server) Serve(ctx context.Context) error {
 	go func() { errCh <- server.ServeTLS(l, "", "") }()
 	go func() { errCh <- cr.ListenAndServe() }()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// TODO: this entire loop needs to be re-visited.
 	for i := 0; i < cap(errCh); i++ {
-		if svrerr := <-errCh; err != nil {
-			sdCh := make(chan error, 2)
-			// give our shutdown go-routines 500ms to complete
+		select {
+		case <-ctx.Done():
 			ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			defer cancel()
 
+			sdCh := make(chan error, 2)
 			go func() { sdCh <- server.Shutdown(ctx) }()
 			go func() { sdCh <- cr.Shutdown(ctx) }()
 			for i := 0; i < cap(sdCh); i++ {
 				if sderr := <-sdCh; err != nil {
-					return fmt.Errorf("server failed because %v; could not gracefully shutdown becaue %v", svrerr, sderr)
+					// return fmt.Errorf("server failed because %v; could not gracefully shutdown becaue %v", svrerr, sderr)
+					return sderr
 				}
 			}
-			return fmt.Errorf("server failed: %v; gracefully shutdown", svrerr)
+			// return fmt.Errorf("server failed: %v; gracefully shutdown", svrerr)
+			return fmt.Errorf("server failed: to gracefully shutdown")
+
+		case err := <-errCh:
+			if err != nil {
+				cancel()
+			}
+			// give our shutdown go-routines 500ms to complete
 		}
 	}
 

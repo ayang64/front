@@ -1,4 +1,4 @@
-package httpextra
+package commonlog
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type ResponseRecorder struct {
 	http.ResponseWriter
 }
 
-type CommonLog struct {
+type Handler struct {
 	W io.Writer
 	H http.Handler
 }
@@ -31,7 +31,7 @@ func (r *ResponseRecorder) WriteHeader(s int) {
 	r.ResponseWriter.WriteHeader(s)
 }
 
-func (cl CommonLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (cl Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	now := time.Now()
 	recorder := ResponseRecorder{ResponseWriter: w}

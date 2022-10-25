@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ayang64/front/httpextra"
+	"github.com/ayang64/front/commonlog"
 
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -143,8 +143,8 @@ func (p Proxy) Run(ctx context.Context) error {
 
 	server := http.Server{
 		TLSConfig: &config,
-		// Handler:   &httpextra.CommonLog{W: os.Stderr, H: &Handler{}},
-		Handler: &httpextra.CommonLog{
+		// Handler:   &commonlog.Handler{W: os.Stderr, H: &Handler{}},
+		Handler: &commonlog.Handler{
 			W: os.Stderr,
 			H: &httputil.ReverseProxy{
 				Director: func(r *http.Request) {
@@ -175,7 +175,7 @@ func (p Proxy) Run(ctx context.Context) error {
 	}
 
 	cr := http.Server{
-		Handler: &httpextra.CommonLog{W: os.Stderr, H: m.HTTPHandler(nil)},
+		Handler: &commonlog.Handler{W: os.Stderr, H: m.HTTPHandler(nil)},
 		Addr:    ":80",
 	}
 

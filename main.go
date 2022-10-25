@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ayang64/front/commonlog"
@@ -222,7 +224,10 @@ func main() {
 		Index:     map[string]*Target{},
 	}
 
-	if err := proxy.Run(context.TODO()); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT)
+	defer stop()
+
+	if err := proxy.Run(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -5,16 +5,41 @@ import (
 	"flag"
 	"log"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/ayang64/front/proxy"
 )
 
+func intOr(vs ...string) int {
+	for _, v := range vs {
+		if v == "" {
+			continue
+		}
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			continue
+		}
+		return i
+	}
+	return 0
+}
+
+func or[T comparable](vs ...T) T {
+	var zero T
+	for _, v := range vs {
+		if v != zero {
+			return v
+		}
+	}
+	return zero
+}
+
 func main() {
 	httpport := flag.Int("httpport", 80, "http port")
 	httpsport := flag.Int("httpsport", 443, "https port")
-	config := flag.String("config", "./proxy.json", "configuration file")
-	dircache := flag.String("dircache", "./dircache", "location of certificate cache")
+	config := flag.String("config", "/usr/local/front/proxy.json", "configuration file")
+	dircache := flag.String("dircache", "/usr/local/front/dircache", "location of certificate cache")
 	flag.Parse()
 
 	server, err := proxy.New(

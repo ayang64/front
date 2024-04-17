@@ -77,6 +77,10 @@ func (s *Server) refreshFromFile(ctx context.Context, p string) (Targets, error)
 // If succesful, the new configuration is stored and indexed for
 // fast retrieval.
 func (s *Server) Refresh(ctx context.Context) error {
+	defer func() {
+		log.Printf("after refresh, s.targets = %#v", s.targets)
+		log.Printf("after refresh, s.index = %#v", s.index)
+	}()
 	targets, err := s.refreshFromFile(ctx, s.configPath)
 	if err != nil {
 		return err
@@ -97,7 +101,10 @@ func (s *Server) LookupTarget(ctx context.Context, name string) (*Target, error)
 	target, exists := s.lookupTarget(ctx, name)
 	if !exists {
 		// if not found, check if the configuration file has been updated.
-		s.Refresh(ctx)
+		log.Printf("refreshing targets..")
+		if err := s.Refresh(ctx); err != nil {
+			log.Printf("Refresh() failed: %v", err)
+		}
 		target, exists = s.lookupTarget(ctx, name)
 	}
 	if !exists {
